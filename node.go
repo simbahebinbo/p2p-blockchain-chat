@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -33,17 +34,22 @@ func (c *Client) Connect(serverPort int) {
 	for {
 		conn, err := net.Dial("tcp", c.connectionAddress)
 		if err != nil {
-			fmt.Printf("Couldn't connect localhost:%d -> %s %s\n", c.port, c.connectionAddress, err.Error())
+			fmt.Print("\033[2K\r")
+			fmt.Printf("[localhost:%d] Retrying %s\n", c.port, c.connectionAddress)
+			fmt.Printf("[YOU]>")
 			time.Sleep(2 * time.Second)
 			continue
 		} else {
 
-			fmt.Fprintf(conn, "CONN:localhost:%d\n", serverPort)
+			var buffer [1024]byte
+			messageType := []byte("CONN:")
+			host := []byte(fmt.Sprintf("localhost:%d", serverPort))
 
+			copy(buffer[:32], messageType)
+			copy(buffer[32:], host)
+
+			conn.Write(buffer[:])
 			conn.Close()
-
-			// fmt.Printf("%d: Holding connection to %s\n", c.port, c.connectionAddress)
-			time.Sleep(2 * time.Second)
 		}
 	}
 }
@@ -56,8 +62,6 @@ func (n *Node) ConnectToNodes() {
 
 		go client.Connect(n.ServerPort)
 	}
-
-	fmt.Printf("%s connected to all known nodes\n", n.Name)
 }
 
 func (n *Node) StartServer() {
@@ -81,25 +85,54 @@ func (n *Node) StartServer() {
 }
 
 func (n *Node) HandleClient(conn net.Conn) {
-	msg, err := bufio.NewReader(conn).ReadString('\n')
+	var buffer [1024]byte
+	_, err := bufio.NewReader(conn).Read(buffer[:])
+
+	messageType := string(buffer[:32])
 
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Printf("Failed to read message from: %s\n %s", conn.LocalAddr().String(), err.Error())
 	}
 
-	if strings.HasPrefix(msg, "CONN:") {
-		address := strings.TrimPrefix(msg, "CONN:")
+	if strings.HasPrefix(messageType, "CONN:") {
+		address := string(buffer[32:])
 		n.AddPeer(conn, address)
 
 		data := []byte("RECV:localhost:" + string(n.ServerPort) + "\n")
 		_, err := conn.Write(data)
 
 		if err != nil {
-			log.Printf("Error sending data to %s", address)
+			log.Printf("Error sending data to %s\n", address)
 			log.Fatal(err.Error())
 		}
-		conn.Close()
+
+	} else if strings.HasPrefix(messageType, "NEWBLOCK:") {
+		blockBytes := buffer[32:]
+
+		block, err := blocks.DeserializeBlock(blockBytes)
+
+		if err != nil {
+			fmt.Printf("Error deserializing block: %s\n", err.Error())
+			return
+		}
+
+		n.Blockchain.Blocks = append(n.Blockchain.Blocks, block)
+
+		data := []byte("NEWBLOCKCONF:\n")
+		_, err = conn.Write(data)
+
+		if err != nil {
+			log.Printf("Error sending data to %s\n", conn.LocalAddr().String())
+			log.Fatal(err.Error())
+		}
+
+		fmt.Print("\033[2K\r")
+
+		fmt.Printf("[%s]>%s\n", block.Data.Owner, block.Data.Message)
+		fmt.Printf("[YOU]>")
+
 	}
+	conn.Close()
 
 }
 
@@ -108,7 +141,9 @@ func (n *Node) AddPeer(conn net.Conn, peerAddress string) {
 
 	if _, exists := n.KnownNodes[peerAddress]; !exists {
 		n.KnownNodes[peerAddress] = 0
-		fmt.Printf("%s added peer %s", n.Name, peerAddress)
+		fmt.Print("\033[2K\r")
+		fmt.Printf("[localhost:%d] Added %s\n", n.ServerPort, peerAddress)
+		fmt.Printf("[YOU]>")
 		n.PeersLock.Unlock()
 	} else {
 		n.PeersLock.Unlock()
@@ -117,32 +152,59 @@ func (n *Node) AddPeer(conn net.Conn, peerAddress string) {
 }
 
 func (n *Node) AddChat() {
-	var chat string
+	input := bufio.NewReader(os.Stdin)
 
-	fmt.Print(">")
-	fmt.Scan(&chat)
+	fmt.Print("[YOU]>")
+	line, err := input.ReadString('\n')
+
+	if err != nil {
+		fmt.Printf("Error reading input: %s", err.Error())
+	}
+
+	chat := blocks.Chat{Message: line[:len(line)-1], Owner: n.Name}
+
 	n.Blockchain.AddBlock(chat)
 
 	currentBlock := n.Blockchain.Blocks[len(n.Blockchain.Blocks)-1]
 
-	var unmarshaledTime time.Time
+	// n.Blockchain.WriteBlock("blockchain", currentBlock)
+	n.ShareBlock(currentBlock)
+}
 
-	err := unmarshaledTime.UnmarshalBinary(currentBlock.Timestamp)
-	if err != nil {
-		log.Fatal(err.Error())
+func (n *Node) ShareBlock(block *blocks.Block) {
+
+	for _, client := range n.Clients {
+		conn, err := net.Dial("tcp", client.connectionAddress)
+		if err != nil {
+			fmt.Printf("localhost:%d couldn't share block with:  %s %s\n", client.port, client.connectionAddress, err.Error())
+		} else {
+
+			blockBytes, err := blocks.SerializeBlock(block)
+
+			if err != nil {
+				fmt.Printf("Failed to serialize block")
+			}
+
+			var messageBuffer [1024]byte
+
+			messageType := []byte("NEWBLOCK:")
+			copy(messageBuffer[:32], messageType)
+			copy(messageBuffer[32:], blockBytes)
+
+			_, err = conn.Write(messageBuffer[:])
+			if err != nil {
+				fmt.Printf("Failed to send block")
+			}
+
+		}
+		conn.Close()
 	}
-
-	timeString := unmarshaledTime.Format(time.RFC3339)
-
-	fmt.Println("===================")
-	fmt.Printf("Created At: %s\n", timeString)
-	fmt.Printf("Parent:     %x\n", currentBlock.ParentHash)
-	fmt.Printf("Hash:       %x\n", currentBlock.Hash)
-	fmt.Printf("Message:    %s\n", currentBlock.Data)
-	fmt.Println("===================")
 }
 
 func (n *Node) Start() {
+
+	fmt.Print("\033[H\033[2J") // clear screen
+
 	blockchain, err := blocks.NewBlockchain()
 
 	if err != nil {
@@ -151,9 +213,19 @@ func (n *Node) Start() {
 
 	n.Blockchain = *blockchain
 
-	go n.StartServer()
-	go n.ConnectToNodes()
+	// read blockchain from file
+	// n.Blockchain.ReadBlockchain("blockchain")
+	// n.Blockchain.PrintBlocks()
 
+	// connect to nodes
+	go n.StartServer()
+	n.ConnectToNodes()
+
+	// ask for current chain
+
+	// validate current chain against own chain
+
+	// chat
 	for {
 		n.AddChat()
 	}

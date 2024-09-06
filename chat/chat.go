@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/elitracy/chat-blockchain/blocks"
 	"log"
 	"time"
+
+	"github.com/elitracy/chat-blockchain/blocks"
 )
 
 func main() {
@@ -14,9 +16,9 @@ func main() {
 		print(err.Error())
 	}
 
-	for i := 0; i < 1; i++ {
-		blockchain.AddBlock(fmt.Sprintf("Block: %d", i))
-	}
+	// for i := 0; i < 11; i++ {
+	// 	blockchain.AddBlock(fmt.Sprintf("Block: %d", i))
+	// }
 
 	// for i := 0; i < len(blockchain.Blocks); i++ {
 	// 	fmt.Println(blockchain.Blocks[i].Data)
@@ -34,13 +36,20 @@ func main() {
 
 	println("VALID BLOCKCHAIN")
 
-	for i := 0; i < len(blockchain.Blocks); i++ {
-		encodedBlock := blocks.SerializeBlock(blockchain.Blocks[i])
-		decodedBlock := blocks.DeserializeBlock(encodedBlock)
+	for i := 1; i < len(blockchain.Blocks); i++ {
+		encodedBlock, err := blocks.SerializeBlock(blockchain.Blocks[i])
+
+		if err != nil {
+			log.Fatal("Failed to serialize block: ", err.Error())
+		}
+		decodedBlock, err := blocks.DeserializeBlock(encodedBlock)
+		if err != nil {
+			log.Fatal("Failed to deserialize block: ", err.Error())
+		}
 
 		var unmarshaledTime time.Time
 
-		err := unmarshaledTime.UnmarshalBinary(decodedBlock.Timestamp)
+		err = unmarshaledTime.UnmarshalBinary(decodedBlock.Timestamp)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
@@ -52,6 +61,10 @@ func main() {
 		fmt.Printf(" - parent    > %s\n", hex.EncodeToString(decodedBlock.ParentHash[:]))
 		fmt.Printf(" - current   > %s\n", hex.EncodeToString(decodedBlock.Hash[:]))
 		fmt.Println("-------------------------------------")
+
+		if !bytes.Equal(blockchain.Blocks[i-1].Hash, decodedBlock.ParentHash) {
+			log.Fatal("Encoding/Decoding failed, parent hashes do not match")
+		}
 	}
 
 }
