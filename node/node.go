@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"bufio"
@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/elitracy/chat-blockchain/blocks"
 )
@@ -23,35 +22,6 @@ type Node struct {
 	Clients []Client
 
 	Blockchain blocks.Blockchain
-}
-
-type Client struct {
-	port              int
-	connectionAddress string
-}
-
-func (c *Client) Connect(serverPort int) {
-	for {
-		conn, err := net.Dial("tcp", c.connectionAddress)
-		if err != nil {
-			fmt.Print("\033[2K\r")
-			fmt.Printf("[localhost:%d] Retrying %s\n", c.port, c.connectionAddress)
-			fmt.Printf("[YOU]>")
-			time.Sleep(2 * time.Second)
-			continue
-		} else {
-
-			var buffer [1024]byte
-			messageType := []byte("CONN:")
-			host := []byte(fmt.Sprintf("localhost:%d", serverPort))
-
-			copy(buffer[:32], messageType)
-			copy(buffer[32:], host)
-
-			conn.Write(buffer[:])
-			conn.Close()
-		}
-	}
 }
 
 func (n *Node) ConnectToNodes() {
@@ -180,13 +150,11 @@ func (n *Node) ShareBlock(block *blocks.Block) {
 		} else {
 
 			blockBytes, err := blocks.SerializeBlock(block)
-
 			if err != nil {
 				fmt.Printf("Failed to serialize block")
 			}
 
 			var messageBuffer [1024]byte
-
 			messageType := []byte("NEWBLOCK:")
 			copy(messageBuffer[:32], messageType)
 			copy(messageBuffer[32:], blockBytes)
@@ -203,7 +171,7 @@ func (n *Node) ShareBlock(block *blocks.Block) {
 
 func (n *Node) Start() {
 
-	fmt.Print("\033[H\033[2J") // clear screen
+	// fmt.Print("\033[H\033[2J") // clear screen
 
 	blockchain, err := blocks.NewBlockchain()
 

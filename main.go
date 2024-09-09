@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+
+	"github.com/elitracy/chat-blockchain/node"
 )
 
 const NUM_INIT_NODES = 3
@@ -11,20 +13,25 @@ const NUM_INIT_NODES = 3
 func main() {
 	sPort := flag.Int("s", 8000, "the node's server port")
 	name := flag.String("n", "unnamed node", "the node's name")
-	knownPorts := flag.String("k", "", "comma separated list of ports")
+	knownPorts := flag.String("k", "-1", "comma separated list of ports")
 
 	flag.Parse()
 
-	n := Node{KnownNodes: make(map[string]int),
+	n := node.Node{
+		KnownNodes: make(map[string]int),
 		Name:       *name,
 		ServerPort: *sPort,
 	}
 
-	ports := strings.Split(*knownPorts, ",")
+	var ports []string
 
-	for i := range ports {
-		port := fmt.Sprintf("localhost:%s", ports[i])
-		n.KnownNodes[port] = 0
+	if *knownPorts != "-1" {
+		ports = strings.Split(*knownPorts, ",")
+	}
+
+	for _, port := range ports {
+		host := fmt.Sprintf("localhost:%s", port)
+		n.KnownNodes[host] = 0
 	}
 
 	n.Start()
