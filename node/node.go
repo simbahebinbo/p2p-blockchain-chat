@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/elitracy/chat-blockchain/blocks"
 )
@@ -26,11 +27,30 @@ type Node struct {
 
 func (n *Node) ConnectToNodes() {
 	for addr := range n.KnownNodes {
+
 		port := n.ServerPort + len(n.Clients) + 1
 		client := Client{connectionAddress: addr, port: port}
 		n.Clients = append(n.Clients, client)
 
-		go client.Connect(n.ServerPort)
+		channel := make(chan int)
+		connectionStatus := 0
+
+		for connectionStatus == 0 {
+			fmt.Print("\033[2K\r")
+			fmt.Printf("[localhost:%d] Trying %s\n", client.port, client.connectionAddress)
+
+			go func() {
+				channel <- client.Connect(n.ServerPort)
+			}()
+
+			connectionStatus = <-channel
+
+			n.KnownNodes[addr] = connectionStatus
+
+			if connectionStatus == 0 {
+				time.Sleep(2 * time.Second)
+			}
+		}
 	}
 }
 

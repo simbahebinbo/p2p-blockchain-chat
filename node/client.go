@@ -3,7 +3,6 @@ package node
 import (
 	"fmt"
 	"net"
-	"time"
 )
 
 type Client struct {
@@ -11,15 +10,11 @@ type Client struct {
 	connectionAddress string
 }
 
-func (c *Client) Connect(serverPort int) {
+func (c *Client) Connect(serverPort int) int {
 	for {
 		conn, err := net.Dial("tcp", c.connectionAddress)
 		if err != nil {
-			fmt.Print("\033[2K\r")
-			fmt.Printf("[localhost:%d] Retrying %s\n", c.port, c.connectionAddress)
-			fmt.Printf("[YOU]>")
-			time.Sleep(2 * time.Second)
-			continue
+			return 0
 		} else {
 
 			var buffer [1024]byte
@@ -31,6 +26,7 @@ func (c *Client) Connect(serverPort int) {
 
 			conn.Write(buffer[:])
 			conn.Close()
+			return 1
 		}
 	}
 }
