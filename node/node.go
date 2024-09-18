@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/elitracy/chat-blockchain/blocks"
 )
@@ -25,31 +24,24 @@ type Node struct {
 	Blockchain blocks.Blockchain
 }
 
-func (n *Node) ConnectToNodes() {
+func (n *Node) ConnectToPeer(addr string) {
+	port := n.ServerPort + len(n.Clients) + 1
+	client := Client{connectionAddress: addr, port: port}
+	n.Clients = append(n.Clients, client)
+
+	connectionStatusChannel := make(chan int)
+
+	go func() {
+		connectionStatusChannel <- client.Connect(n.ServerPort)
+	}()
+
+	n.KnownNodes[addr] = <-connectionStatusChannel
+}
+
+func (n *Node) ConnectToKnownNodes() {
 	for addr := range n.KnownNodes {
-
-		port := n.ServerPort + len(n.Clients) + 1
-		client := Client{connectionAddress: addr, port: port}
-		n.Clients = append(n.Clients, client)
-
-		channel := make(chan int)
-		connectionStatus := 0
-
-		for connectionStatus == 0 {
-			fmt.Print("\033[2K\r")
-			fmt.Printf("[localhost:%d] Trying %s\n", client.port, client.connectionAddress)
-
-			go func() {
-				channel <- client.Connect(n.ServerPort)
-			}()
-
-			connectionStatus = <-channel
-
-			n.KnownNodes[addr] = connectionStatus
-
-			if connectionStatus == 0 {
-				time.Sleep(2 * time.Second)
-			}
+		if n.KnownNodes[addr] == 0 {
+			n.ConnectToPeer(addr)
 		}
 	}
 }
@@ -86,7 +78,10 @@ func (n *Node) HandleClient(conn net.Conn) {
 
 	if strings.HasPrefix(messageType, "CONN:") {
 		address := string(buffer[32:])
-		n.AddPeer(conn, address)
+
+		if _, exists := n.KnownNodes[address]; !exists {
+			n.AddPeer(conn, address)
+		}
 
 		data := []byte("RECV:localhost:" + string(n.ServerPort) + "\n")
 		_, err := conn.Write(data)
@@ -102,7 +97,7 @@ func (n *Node) HandleClient(conn net.Conn) {
 		block, err := blocks.DeserializeBlock(blockBytes)
 
 		if err != nil {
-			fmt.Printf("Error deserializing block: %s\n", err.Error())
+			Logger.Error("Error deserializing block: %s\n", err.Error(), nil)
 			return
 		}
 
@@ -116,11 +111,7 @@ func (n *Node) HandleClient(conn net.Conn) {
 			log.Fatal(err.Error())
 		}
 
-		fmt.Print("\033[2K\r")
-
-		fmt.Printf("[%s]>%s\n", block.Data.Owner, block.Data.Message)
-		fmt.Printf("[YOU]>")
-
+		Console.Write("[%s]>%s\n", block.Data.Owner, block.Data.Message)
 	}
 	conn.Close()
 
@@ -131,24 +122,24 @@ func (n *Node) AddPeer(conn net.Conn, peerAddress string) {
 
 	if _, exists := n.KnownNodes[peerAddress]; !exists {
 		n.KnownNodes[peerAddress] = 0
-		fmt.Print("\033[2K\r")
-		fmt.Printf("[localhost:%d] Added %s\n", n.ServerPort, peerAddress)
-		fmt.Printf("[YOU]>")
+		Console.Write("[localhost:%d] Added %s\n", n.ServerPort, peerAddress)
 		n.PeersLock.Unlock()
 	} else {
 		n.PeersLock.Unlock()
 	}
 
+	// if val, _ := n.KnownNodes[peerAddress]; val == 0 {
+	// 	n.ConnectToPeer(peerAddress)
+	// }
 }
 
 func (n *Node) AddChat() {
 	input := bufio.NewReader(os.Stdin)
 
-	fmt.Print("[YOU]>")
 	line, err := input.ReadString('\n')
 
 	if err != nil {
-		fmt.Printf("Error reading input: %s", err.Error())
+		Logger.Error("Error reading input: %s", err.Error(), nil)
 	}
 
 	chat := blocks.Chat{Message: line[:len(line)-1], Owner: n.Name}
@@ -159,6 +150,8 @@ func (n *Node) AddChat() {
 
 	// n.Blockchain.WriteBlock("blockchain", currentBlock)
 	n.ShareBlock(currentBlock)
+
+	Console.Write("")
 }
 
 func (n *Node) ShareBlock(block *blocks.Block) {
@@ -166,12 +159,13 @@ func (n *Node) ShareBlock(block *blocks.Block) {
 	for _, client := range n.Clients {
 		conn, err := net.Dial("tcp", client.connectionAddress)
 		if err != nil {
-			fmt.Printf("localhost:%d couldn't share block with:  %s %s\n", client.port, client.connectionAddress, err.Error())
+			errMsg := fmt.Sprintf("localhost:%d couldn't share block with:  %s %s\n", client.port, client.connectionAddress, err.Error())
+			Logger.Error(errMsg)
 		} else {
 
 			blockBytes, err := blocks.SerializeBlock(block)
 			if err != nil {
-				fmt.Printf("Failed to serialize block")
+				Logger.Error("Failed to serialize block")
 			}
 
 			var messageBuffer [1024]byte
@@ -181,7 +175,7 @@ func (n *Node) ShareBlock(block *blocks.Block) {
 
 			_, err = conn.Write(messageBuffer[:])
 			if err != nil {
-				fmt.Printf("Failed to send block")
+				Logger.Error("Failed to send block")
 			}
 
 		}
@@ -191,7 +185,8 @@ func (n *Node) ShareBlock(block *blocks.Block) {
 
 func (n *Node) Start() {
 
-	// fmt.Print("\033[H\033[2J") // clear screen
+	Console.Clear()
+	Console.Write("========= %s ========= localhost:%d =========\n", n.Name, n.ServerPort)
 
 	blockchain, err := blocks.NewBlockchain()
 
@@ -207,7 +202,7 @@ func (n *Node) Start() {
 
 	// connect to nodes
 	go n.StartServer()
-	n.ConnectToNodes()
+	n.ConnectToKnownNodes()
 
 	// ask for current chain
 
