@@ -155,7 +155,6 @@ func (n *Node) AddChat() {
 }
 
 func (n *Node) ShareBlock(block *blocks.Block) {
-
 	for _, client := range n.Clients {
 		conn, err := net.Dial("tcp", client.connectionAddress)
 		if err != nil {
