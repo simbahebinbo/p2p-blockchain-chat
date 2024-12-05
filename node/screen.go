@@ -26,5 +26,4 @@ var Console Screen
 func init() {
 	width, height, _ := terminal.GetSize(0)
 	Console = Screen{Width: width, Height: height}
-
 }

@@ -184,7 +184,6 @@ func (n *Node) ShareBlock(block *blocks.Block) {
 }
 
 func (n *Node) Start() {
-
 	Console.Clear()
 	Console.Write("========= %s ========= localhost:%d =========\n", n.Name, n.ServerPort)
 

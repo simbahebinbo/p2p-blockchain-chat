@@ -45,7 +45,6 @@ func AddBlock(data Chat, parentHash []byte) (*Block, error) {
 }
 
 func AddGenesisBlock() (*Block, error) {
-
 	block, err := AddBlock(Chat{"Genesis Block", "root"}, []byte{})
 	if err != nil {
 		return nil, err
@@ -55,7 +54,6 @@ func AddGenesisBlock() (*Block, error) {
 }
 
 func NewBlockchain() (*Blockchain, error) {
-
 	blockchain := &Blockchain{}
 
 	genesisBlock, err := AddGenesisBlock()
@@ -69,7 +67,6 @@ func NewBlockchain() (*Blockchain, error) {
 }
 
 func (blockchain *Blockchain) AddBlock(data Chat) {
-
 	block, err := AddBlock(data, blockchain.Blocks[len(blockchain.Blocks)-1].Hash)
 
 	if err != nil {
@@ -149,7 +146,7 @@ func DeserializeBlock(data []byte) (*Block, error) {
 
 }
 
-func (b *Blockchain) WriteBlock(filename string, block *Block) error {
+func (blockchain *Blockchain) WriteBlock(filename string, block *Block) error {
 	blockBytes, err := SerializeBlock(block)
 	if err != nil {
 		return err
@@ -166,7 +163,7 @@ func (b *Blockchain) WriteBlock(filename string, block *Block) error {
 	return err
 }
 
-func (b *Blockchain) ReadBlockchain(filename string) error {
+func (blockchain *Blockchain) ReadBlockchain(filename string) error {
 	fileData, err := os.ReadFile(filename)
 	if err != nil {
 		return err
@@ -176,12 +173,11 @@ func (b *Blockchain) ReadBlockchain(filename string) error {
 		if err != nil {
 			return err
 		}
-		b.Blocks = append(b.Blocks, block)
+		blockchain.Blocks = append(blockchain.Blocks, block)
 		println("got block")
 	}
 
-	b.CheckBlocks()
+	blockchain.CheckBlocks()
 
 	return nil
-
 }

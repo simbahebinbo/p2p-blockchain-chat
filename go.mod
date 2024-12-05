@@ -1,10 +1,10 @@
 module github.com/elitracy/chat-blockchain
 
-go 1.22.4
+go 1.23
 
-require golang.org/x/crypto v0.27.0
+require golang.org/x/crypto v0.30.0
 
 require (
-	golang.org/x/sys v0.25.0 // indirect
-	golang.org/x/term v0.24.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/term v0.27.0 // indirect
 )
